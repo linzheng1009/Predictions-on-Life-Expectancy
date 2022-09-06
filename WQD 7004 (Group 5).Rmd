@@ -1,0 +1,1005 @@
+---
+title: WQD 7004 Group Assignment - Group 5
+
+
+date: '2022-06-18'  
+
+
+author: 
+- Ooi Shi Yuan                      (17088226/2)
+- Mangayarkarasi Nathan             (S2133275/1)
+- Narmatha A/P Rajamogun            (17087199/2)
+- R Premanan A/L Rathakrishnan      (S2151940/1)
+- Sim Lin Zheng                     (S2102170/1)
+ 
+output: html_document
+---
+
+<h1 style="color:mediumblue;">**Predictions on Life Expectancy**</h1> 
+
+# {.tabset}
+## **Introduction** {.tabset}
+
+People wants to be happy always, and looking for several ways to become more happier. Happiness is a general measure to evaluate our emotional health which could affect our development 
+growth (in terms of physical, mental and spiritual) and could also affect the society and nations as a whole. According to World Health Report 2022, researchers have concluded that there are six variables
+used to define happiness. Hence, we would like to explore and understand the relationships between all variables and predict the life expectancy rate at the end of our study. 
+
+### Objectives 
+1. What are the variables used to define and measure happiness, and what are their relationships?
+2. How could happiness linked to life expectancy?
+3. When and how could we predict the life expectancy? 
+
+
+
+### Dataset {.tabset}
+[*Note: Definition retrieved from World Happiness Report 2022*](https://happiness-report.s3.amazonaws.com/2022/WHR+22.pdf)
+
+
+[*Source: Kaggle*](https://www.kaggle.com/datasets/ajaypalsinghlo/world-happiness-report-2021)  
+
+
+*We are referring to dataset for year 2021 only.*
+
+-------------
+
+<p style="color:navy;">**Ladder Score**</p>
+
+Happiness score determined by national average responses to the questions of life evaluations.
+
+
+--------------
+
+<p style="color:navy;">**Logged GDP per Capita**</p>
+
+
+GDP per capita is in terms of Purchasing Power Parity (PPP) adjusted to constant 2017 international dollars, taken from the World Development Indicators (WDI) released by the World Bank
+This report uses natural log of GDP per capita as this form fits the data significantly better than GDP per capita.
+
+
+--------------
+
+<p style="color:navy;">**Social Support**</p>
+
+
+National average of the binary responses (1 = YES, 0 = NO) to the GWP ("Gallup World Poll") question: "If you were in trouble, do you have relatives or friends you can count on to help you whenever you need them, or not?"
+
+--------------
+
+<p style="color:navy;">**Healthy Life Expectancy**</p>
+
+
+An estimate of the average number of years babies born this year would live in a state of good general health if mortality levels and good health level at each age remain constant in the future (Government of UK).
+
+--------------
+
+<p style="color:navy;">**Freedom to Make Life Choices**</p>
+
+
+National average of the binary responses (1 = YES, 0 = NO) to the GWP question "Are you satisfied or dissatisfied with your freedom to choose what you do with your life?"
+
+--------------
+
+<p style="color:navy;">**Generosity**</p>
+
+
+Residual of regressing the national average of GWP responses to the donation question: "Have you donated money to a charity in the past month?" on log GDP per capita.
+
+--------------
+
+
+<p style="color:navy;">**Perceptions of Corruption**</p>
+
+
+National average of the binary responses (1 = YES, 0 = NO) to the 2 GWP questions: "Is corruption widespread throughout the government in this country or not?" and "Is corruption widespread within businesses in this country or not?".
+
+--------------
+## **Data Cleaning and Pre-processing** {.tabset}
+```{r setup, include = FALSE, echo=TRUE, error=FALSE, warning=FALSE}
+library(readxl)
+library(psych)
+library(plyr)
+library(dplyr)
+library(tidyverse) 
+library(lubridate)
+library(reshape2)
+library(ggplot2)
+library(tidyquant)
+library(caret)
+library(forecast)
+library(klaR)
+library(nnet)
+library(e1071)
+library(Metrics)
+library(rpart)
+library(ggfortify)
+library(glmnet)
+```  
+
+### **Data Cleaning**
+<p style="color:navy;">**a. Import excel: world-happiness-report-2021 **</p>
+```{r include = F, echo=F, error=FALSE, warning=FALSE}
+library(readxl)
+df_original <- read_excel("C:/Users/User/Downloads/world-happiness-report-2021.xlsx")
+```
+
+<p style="color:navy;">**b. Display all columns:**</p>
+```{r message = FALSE, warning = FALSE}
+colnames(df_original)  
+```
+
+<p style="color:navy;">**c. Identify duplicate values: **</p>
+```{r message = FALSE, warning = FALSE}
+sum(duplicated(df_original))
+```
+
+<p style="color:navy;">**d. Checking on missing values:  **</p>
+```{r message = FALSE, warning = FALSE}
+a <- names(df_original)
+for (i in a) {
+ print(paste(i, sum(df_original[i]=="" | is.na(df_original[i])), which(df_original[i]=="" | is.na(df_original[i])) ))
+}
+```
+
+<p style="color:navy;">**e. Checking on NA values:  **</p>
+```{r message = FALSE, warning = FALSE}
+any(is.na(df_original))
+```
+
+<p style="color:navy;">**f. Checking on blank values:  **</p>
+```{r message = FALSE, warning = FALSE}
+nrow(df_original[!complete.cases(df_original), ])
+```
+
+<p style="color:navy;">**g. Remove irrelevant variables: **</p>
+From this dataset, we noted few variables have two calculation methods.  
+
+
+Hence, we decided to remove those columns with "explained by: “variables” " and retained the original variables measurement and scores, used to measure happiness level.
+
+
+Besides that, there is a fictitious country, named: "Dystopia" which has the lowest score for all variables, with the assumption of having the worst living scenario for humans. 
+For data accuracy purpose, we used actual variables and removed Dystopia related attributes, ie: “Ladder score in Dystopia” and “Dystopia and residual”. 
+
+
+In addition, "standard error of ladder score", "upperwhisker" and "lowershwisker" are non-related variables and hence we dropped these for relevant and more reliable result.
+
+Results after dropping irrelevant variables:
+
+```{r message = FALSE, warning = FALSE}
+df0 <- df_original[-c(4:6, 13:20)]
+df1 <- setNames(df0, c("Country.name", "Regional.indicator", "Ladder.score","Logged.GDP.per.capita","Social.support","Healthy.life.expectancy","Freedom.to.make.life.choices","Generosity","Perceptions.of.corruption"))
+glimpse(df1)
+```
+
+**After removing irrelevant variables, our dataset consists of 149 observations with 9 variables for analysis purpose.**
+
+Let's review the shape of our dataset:
+
+```{r message = FALSE, warning = FALSE}
+
+dfcor <- subset(df1, select = -c(2))
+
+data.melt<-melt(dfcor, id="Country.name")
+
+data.sum<-ddply(data.melt, .(variable), summarise,
+         mean = mean(value),
+         sd = sd(value),
+         min = min(value),
+         max = max(value))
+
+ggplot(data.sum, aes(x=variable))+geom_boxplot(aes(ymin =min, lower = mean-sd, middle = mean, upper = mean+sd, ymax =max), stat="identity") +
+  theme_tq() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+<p style="color:navy;">**h. Data transformation / scaling: **</p>
+We noted our dataset's value is not consistent (mixed of log value and numeric value).
+Hence, **Min-Max normalisation** method is used to normalise our values. 
+
+```{r message = FALSE, warning = FALSE}
+preproc1 <- preProcess(df1, method=c("range"))
+norm <- predict(preproc1, df1)
+df_new <- norm
+```
+
+Let's review the shape of our scaled dataset:
+```{r message = FALSE, warning = FALSE}
+
+dfcor <- subset(df_new, select = -c(2))
+
+data.melt<-melt(dfcor, id="Country.name")
+
+data.sum<-ddply(data.melt, .(variable), summarise,
+         mean = mean(value),
+         sd = sd(value),
+         min = min(value),
+         max = max(value))
+
+ggplot(data.sum, aes(x=variable))+geom_boxplot(aes(ymin =min, lower = mean-sd, middle = mean, upper = mean+sd, ymax =max), stat="identity") +
+  theme_tq() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+<p style="color:navy;">**Summary of cleaned dataset  **</p>
+```{r message = FALSE, warning = FALSE}
+summary(df_new)  
+```
+
+<p style="color:mediumblue;">**Our dataset is ready for analysis!**</p>
+
+
+### **Exploratory Data Analysis (EDA)** {.tabset}
+
+Exploratory Data Analysis is an approach of analyzing and investigating datasets in order to discover underlying patterns and trends, detect anomalies or validate assumptions, often utilizing statistical graphs and data visualization methods.
+In this study, EDA was performed to analyse and evaluate happiness levels in all countries around the world based on six factors: GDP per capita, social support, healthy life expectancy, freedom, absence of corruption, and generosity.The findings indicates how measurements of well-being can be used effectively to assess a country's development.
+
+Let's review our cleaned dataset:
+```{r message = FALSE, warning = FALSE}
+
+glimpse(df_new)
+
+```
+
+<p style="color:navy;"> **Univariate Analysis**</p>
+
+Descriptive analysis on our cleaned dataset: 
+
+```{r message = FALSE, warning = FALSE}
+describe(df_new)
+```
+
+<p style="color:navy;"> **Bivariate Analysis**</p>
+
+#### **Bar chart** {.tabset}
+
+<p style="color:mediumblue;">***Regional Happiness Indicator*** </p>
+
+There are 10 distinct regions within the dataset. Each region's mean happiness score is computed and presented on a bar graph as shown below: 
+
+<p style="color:navy;">**Overview of all regions: **</p>
+
+```{r message = FALSE, warning = FALSE}
+
+library(ggplot2)
+
+mean_ladderscore <- aggregate(Ladder.score~Regional.indicator, data=df_new, FUN='mean')
+mean_ladderscore
+
+
+p <- ggplot(data=mean_ladderscore, aes(x=reorder(Regional.indicator, Ladder.score), y=Ladder.score))+
+  geom_bar(stat="identity", fill ='darkgreen', width=0.5)+
+  labs(y = "Happiness Score", x = "Regions")+
+  theme_minimal()
+  
+p + coord_flip() + ylim(0,1)
+
+
+```
+
+Based on the above graph, It can be seen that North America and ANZ have the highest happiness ranking, followed by Western Europe, Central and Eastern Europe, and South Asia have the lowest.
+
+
+<p style="color:navy;">**Countries in North America and ANZ**</p>
+
+```{r message = FALSE, warning = FALSE}
+
+NAZ <- df_new[df_new$Regional.indicator == "North America and ANZ",]
+
+p <- ggplot(data=NAZ, aes(x=reorder(Country.name, Ladder.score), y=Ladder.score)) +
+  geom_bar(stat="identity", fill='skyblue', width=0.3)+
+  labs(y = "Happiness Score", x = "Countries")+
+  theme_minimal()
+
+p + coord_flip() + ylim(0,1)
+
+```
+
+
+<p style="color:navy;">**Countries in Western Europe**</p>
+
+```{r echo = FALSE}
+
+WE <- df_new[df_new$Regional.indicator == "Western Europe",]
+
+p <- ggplot(data=WE, aes(x=reorder(Country.name, Ladder.score), y=Ladder.score)) +
+  geom_bar(stat="identity", fill='cadetblue')+
+  labs(y = "Happiness Score", x = "Countries")+
+  theme_minimal()
+
+p + coord_flip() + ylim(0,1)
+
+```
+
+
+<p style="color:navy;">**Countries in Central and Eastern Europe**</p>
+
+```{r echo = FALSE}
+
+CEE <- df_new[df_new$Regional.indicator == "Central and Eastern Europe",]
+#CEE
+
+p <- ggplot(data=CEE, aes(x=reorder(Country.name, Ladder.score), y=Ladder.score)) +
+  geom_bar(stat="identity", fill="powderblue", width=0.5)+
+  labs(y = "Happiness Score", x = "Countries")+
+  theme_minimal()
+
+p + coord_flip() + ylim(0,1)
+
+
+```
+
+
+<p style="color:navy;">**Countries in Latin America and Caribbean**</p>
+
+```{r echo = FALSE}
+
+LAC <- df_new[df_new$Regional.indicator == "Latin America and Caribbean",]
+#LAC
+
+p <- ggplot(data=LAC, aes(x=reorder(Country.name, Ladder.score), y=Ladder.score)) +
+  geom_bar(stat="identity", fill='steelblue', width=0.5)+
+  labs(y = "Happiness Score", x = "Countries")+
+  theme_minimal()
+
+p + coord_flip() + ylim(0,1)
+
+```
+
+
+<p style="color:navy;">**Countries in East Asia**</p>
+```{r echo = FALSE}
+
+EA <- df_new[df_new$Regional.indicator == "East Asia",]
+#EA
+
+p <- ggplot(data=EA, aes(x=reorder(Country.name, Ladder.score), y=Ladder.score)) +
+  geom_bar(stat="identity", fill='lightskyblue', width=0.3)+
+  labs(y = "Happiness Score", x = "Countries")+
+  theme_minimal()
+
+p + coord_flip() + ylim(0,1)
+
+```
+
+
+<p style="color:navy;">**Countries in Commonwealth of Independent States**</p>
+```{r echo = FALSE}
+
+CIS <- df_new[df_new$Regional.indicator == "Commonwealth of Independent States",]
+#CIS
+
+p <- ggplot(data=CIS, aes(x=reorder(Country.name, Ladder.score), y=Ladder.score)) +
+  geom_bar(stat="identity", fill="dodgerblue", width=0.5)+
+  labs(y = "Happiness Score", x = "Countries")+
+  theme_minimal()
+
+p + coord_flip() + ylim(0,1)
+
+```
+
+
+<p style="color:navy;">**Countries in Southeast Asia**</p>
+
+```{r echo = FALSE}
+
+SEA <- df_new[df_new$Regional.indicator == "Southeast Asia",]
+
+p <- ggplot(data=SEA, aes(x=reorder(Country.name, Ladder.score), y=Ladder.score)) +
+  geom_bar(stat="identity", fill="PaleTurquoise", width=0.5)+
+  labs(y = "Happiness Score", x = "Countries")+
+  theme_minimal()
+
+p + coord_flip() + ylim(0,1)
+
+```
+
+
+<p style="color:navy;">**Countries in Middle East and North Africa**</p>
+
+```{r echo = FALSE}
+MENA <- df_new[df_new$Regional.indicator == "Middle East and North Africa",]
+#MENA
+
+p <- ggplot(data=MENA, aes(x=reorder(Country.name, Ladder.score), y=Ladder.score)) +
+  geom_bar(stat="identity", fill='deepskyblue', width=0.5)+
+  labs(y = "Happiness Score", x = "Countries")+
+  theme_minimal()
+
+p + coord_flip() + ylim(0,1)
+
+```
+
+
+<p style="color:navy;">**Countries in Sub-Saharan Africa**</p>
+
+```{r echo = FALSE}
+SSA <- df_new[df_new$Regional.indicator == "Sub-Saharan Africa",]
+
+p <- ggplot(data=SSA, aes(x=reorder(Country.name, Ladder.score), y=Ladder.score)) +
+  geom_bar(stat="identity", fill='lightsteelblue')+
+  labs(y = "Happiness Score", x = "Countries")+
+  theme_minimal()
+
+p + coord_flip() + ylim(0,1)
+
+```
+
+
+<p style="color:navy;">**Countries in South Asia**</p>
+
+```{r echo = FALSE}
+SA <- df_new[df_new$Regional.indicator == "South Asia",]
+
+p <- ggplot(data=SA, aes(x=reorder(Country.name, Ladder.score), y=Ladder.score)) +
+  geom_bar(stat="identity", fill='royalblue', width=0.5)+
+  labs(y = "Happiness Score", x = "Countries")+
+  theme_minimal()
+
+p + coord_flip() + ylim(0,1)
+
+```
+
+<p style="color:navy;">**Summary of the most happiest countries in respective regions:**</p>
+```{r message = FALSE, warning = FALSE}
+R <- c("North America & ANZ", "Western Europe", "Central & Eastern Europe", "Latin America & Caribbean", "East Asia", "Commonwealth of Independent States", "Southeast Asia", "Middle East & North Africa", "Sub-Saharan Africa", "South Asia")
+C <- c("New Zealand", "Finland", "Czech Republic", "Costa Rica", "Taiwan Province of China", "Uzbekistan", "Singapore", "Israel", "Mauritius", "Nepal")
+S <- c(7.277, 7.842, 6.965, 7.069, 6.584, 6.179, 6.377, 7.157, 6.049, 5.269)
+
+df2 <- data.frame(
+	Region <- R,
+	Countries <- C,
+	Ladder_Score <- S
+)
+
+print(df2)
+```
+
+#### **Heatmap** {.tabset}
+
+<p style="color:navy;">**Correlation Analysis & Matrix**</p>
+
+
+```{r message = FALSE, warning = FALSE}
+dfcor1 <- subset(df_new, select = -c(1,2))
+
+
+dfcormat1 <- round(cor(dfcor1),2)
+
+
+melted_dfcormat1 <- melt(dfcormat1)
+
+ggplot(melted_dfcormat1, aes(x=Var1, y=Var2, fill=value )) +
+  geom_tile()+scale_fill_gradient(high = "blue", low = "lightblue") +
+  geom_text(aes(label=round(value,2)),size=3) +
+  theme_tq() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "none",
+  ) +
+  labs(x="",y="",
+       title = "Correlation Matrix of Happiness")
+```
+
+Several strong correlations could be identified from the **heatmap**, such as:
+
+
+1. Logged GDP per Capita __vs__ Healthy Life Expectancy (0.86)
+
+
+2. Ladder Score __vs__ Logged GDP per Capita (0.79)
+
+
+3. Logged GDP per Capita __vs__ Social Support (0.79)
+
+
+4. Ladder Score __vs__ Healthy Life Expectancy (0.77)
+
+
+5. Ladder Score __vs__ Social Support (0.76)
+
+
+6. Social Support __vs__ Healthy Life Expectancy (0.72)
+
+
+7. Ladder Score __vs__ Freedom to Make Life Choices (0.61)
+
+
+
+**Relationships of 6 variables against ladder score (aka Happiness score):**
+
+
+Strong **Positive** Correlation: Logged GDP per Capita, Social Support, Healthy Life Expectancy, Freedom to make life choices
+
+
+**Negative** Correlation: Generosity, Perceptions of Corruption
+
+
+#### **Pairplot / Scatterplot** {.tabset}
+
+We then scripted a **Pair Plot** to identify and search for any interesting patterns from the scatter plots.
+
+
+To do this, we will need to remove the categorical data contained within the dataset first. We reused **dfcor1** vector that was previously used for the **heatmap** where the categorical data had already been removed.
+
+```{r message = FALSE, warning = FALSE}
+pairs(dfcor1, col="darkgreen", pch = 18, main = "Pair Plots of Happiness")
+```
+
+Although the data are rather **dispersed** but positive and negative patterns or formations could seemingly be observed.
+
+
+We magnified the scatter plots by separately plotting the **7 strong correlations** that we had identified from the **heatmap** above.
+
+
+<p style="color:navy;">**1. Logged GDP per Capita vs Healthy Life Expectancy (0.86) ** </p>
+```{r message = FALSE, warning = FALSE}
+plot(df_new$Logged.GDP.per.capita, df_new$Healthy.life.expectancy,
+     xlab = "Logged GDP per Capita",
+     ylab = "Healthy Life Expectancy",
+     main = "Logged GDP per Capita vs Healthy Life Expectancy",
+     pch = 19,
+     col = "darkblue")
+```
+
+<p style="color:navy;">**2. Ladder Score vs Logged GDP per Capita (0.79)** </p>
+```{r echo = FALSE}
+plot(df_new$Ladder.score, df_new$Logged.GDP.per.capita,
+     xlab = "Ladder Score",
+     ylab = "Logged GDP per Capita",
+     main = "Ladder Score vs Logged GDP per Capita",
+     pch = 19,
+     col = "darkblue")
+```
+
+<p style="color:navy;">**3. Logged GDP per Capita vs Social Support (0.79)** </p>
+```{r echo = FALSE}
+plot(df_new$Logged.GDP.per.capita, df_new$Social.support,
+     xlab = "Logged GDP per Capita",
+     ylab = "Social Support",
+     main = "Logged GDP per Capita vs Social Support",
+     pch = 19,
+     col = "darkblue")
+```
+
+<p style="color:navy;">**4. Ladder Score vs Healthy Life Expectancy (0.77)**</p>
+```{r echo = FALSE}
+plot(df_new$Ladder.score, df_new$Healthy.life.expectancy,
+     xlab = "Ladder Score",
+     ylab = "Healthy Life Expectancy",
+     main = "Ladder Score vs Healthy Life Expectancy",
+     pch = 19,
+     col = "darkblue")
+```
+
+<p style="color:navy;">**5. Ladder Score vs Social Support (0.76)**</p>
+```{r echo = FALSE}
+plot(df_new$Ladder.score, df_new$Social.support,
+     xlab = "Ladder Score",
+     ylab = "Social Support",
+     main = "Ladder Score vs Social Support",
+     pch = 19,
+     col = "darkblue")
+```
+
+<p style="color:navy;">**6. Social Support vs Healthy Life Expectancy (0.72)**</p>
+```{r echo = FALSE}
+plot(df_new$Social.support, df_new$Healthy.life.expectancy,
+     xlab = "Social Support",
+     ylab = "Healthy Life Expectancy",
+     main = "Social Support vs Healthy Life Expectancy",
+     pch = 19,
+     col = "darkblue")
+```
+
+<p style="color:navy;">**7. Ladder Score vs Freedom to Make Life Choices (0.61)**</p>
+```{r echo = FALSE}
+plot(df_new$Ladder.score, df_new$Freedom.to.make.life.choices,
+     xlab = "Ladder Score",
+     ylab = "Freedom to Make Life Choices",
+     main = "Ladder Score vs Freedom to Make Life Choices",
+     pch = 19,
+     col = "darkblue")
+```
+
+## **Modelling** {.tabset}
+
+### **Linear Regression** {.tabset}
+
+Linear regression is used to perform prediction. The non-numeric data has been dropped. 
+
+**Independent variables, x**: Logged.GDP.per.capita, Social.support, Freedom.to.make.life.choices, Generosity, Perceptions.of.corruption
+
+**Dependent variables, y**: Healthy.life.expectancy
+
+<p style="color:navy;">**Graph: **</p>
+```{r message = FALSE, warning = FALSE}
+
+df3 <- df_new[,-c(1:3)]
+
+y <- df3$Healthy.life.expectancy
+x <- data.matrix(df3[, c("Logged.GDP.per.capita", "Social.support", "Freedom.to.make.life.choices", "Generosity", "Perceptions.of.corruption")])
+
+#fit simple linear regression model
+model <- lm(y~x) 
+
+#define residual
+res <- resid(model)
+
+#produce residual vs. fitted plot
+plot(fitted(model), res,
+     pch = 19,
+     col = "darkblue")
+
+#add a horizontal line at 0
+abline(0,0)
+```
+
+<p style="color:navy;">**Q-Q plot: **</p>
+```{r message = FALSE, warning = FALSE}
+#create Q-Q plot for residuals
+qqnorm(res,
+       pch = 19,
+     col = "darkblue")
+
+#add a straight diagonal line to the plot
+qqline(res)
+```
+
+The above Q-Qplot shows that the model's actual residuals are normally distributed. Based on these residuals, it can be concluded that the model fulfills the homoscedasticity condition.
+
+****
+
+**Prediction of healthy life expectancy of humans using multiple linear regression**
+
+```{r message = FALSE, warning = FALSE}
+#package for prediction of regression model
+library(forecast)
+
+#the data set split into training and test sets with a proportion of 80:20
+trainingset <- df3[1:(round(0.8*nrow(df3))),]
+testset <- df3[(round(0.8*nrow(df3))+1):nrow(df3),]
+
+#life expectancy is predicted using other variables
+model1 <- lm(Healthy.life.expectancy ~ Logged.GDP.per.capita + Social.support + Freedom.to.make.life.choices + Generosity + Perceptions.of.corruption, data = trainingset)
+
+predicted.values <- predict(model1, testset)
+
+#Evaluation 
+
+error <- testset$Healthy.life.expectancy - predicted.values
+a <- mean(error)
+print(paste("Mean error:", abs(a)))
+
+b <- summary(model1)$r.squared
+print(paste("R-squared:", b))
+
+RMSE = sqrt(abs(a))
+print(paste("RMSE: ", RMSE))
+
+```
+
+*Best result: Error (near to 0) & higher R-squared value (near to 1)*
+
+### **Ridge Regression** {.tabset}
+
+We used 6 variables data to perform prediction and dropped the irrelevant columns (non-numeric data).
+
+
+**Independent variables, x**: Logged.GDP.per.capita, Social.support, Freedom.to.make.life.choices, Generosity, Perceptions.of.corruption
+
+
+**Dependent variables, y**: Healthy.life.expectancy
+
+```{r message = FALSE, warning = FALSE}
+
+df3 <- df_new[,-c(1:3)]
+
+y <- df3$Healthy.life.expectancy
+x <- data.matrix(df3[, c("Logged.GDP.per.capita", "Social.support", "Freedom.to.make.life.choices", "Generosity", "Perceptions.of.corruption")])
+
+#fit ridge regression model
+model <- glmnet(x, y, alpha = 0)
+```
+
+<p style="color:navy;">**Summary of the model**</p>
+```{r message = FALSE, warning = FALSE}
+summary(model)
+```
+
+<p style="color:navy;">**Optimal lambda value to minimise MSE**</p>
+```{r message = FALSE, warning = FALSE}
+#perform k-fold cross-validation to find optimal lambda value
+cv_model <- cv.glmnet(x, y, alpha = 0)
+
+#find optimal lambda value that minimizes test MSE
+best_lambda <- cv_model$lambda.min
+best_lambda
+```
+
+<p style="color:navy;">**Plot of test MSE by lambda value**</p>
+```{r message = FALSE, warning = FALSE}
+#produce plot of test MSE by lambda value
+plot(cv_model) 
+```
+
+<p style="color:navy;">**Find the coefficients of best model**</p>
+```{r message = FALSE, warning = FALSE}
+best_model <- glmnet(x, y, alpha = 0, lambda = best_lambda)
+coef(best_model)
+```
+
+<p style="color:navy;">**Produce Ridge trace plot**</p>
+```{r message = FALSE, warning = FALSE}
+plot(model, xvar = "lambda")
+```
+
+<p style="color:navy;">**Result: **</p>
+```{r message = FALSE, warning = FALSE}
+#use fitted best model to make predictions
+y_predicted <- predict(model, s = best_lambda, newx = x)
+
+#find SST and SSE
+sst <- sum((y - mean(y))^2)
+sse <- sum((y_predicted - y)^2)
+
+#find R-Squared
+rsq <- 1 - sse/sst
+print(paste("R-squared value: ", rsq))
+
+#find RMSE
+RMSE = sqrt(sse/nrow(df3))
+print(paste("RMSE value: ", RMSE))
+
+```
+*Optimal result: RMSE = 0 and R-squared = 1*
+
+### **K-Means Cluster** {.tabset}
+
+Since the majority of our data are continuous data, we used **K-Means Cluster**, **Unsupervised Learning method** to identify possible groups among these numerical data.
+
+Firstly, we converted our dataset to unlabelled dataset with **dfcor1**. We limited the numbers of variables to 4 variables which are healthy life expectancy, as well as variables that are highly correlated with it (Life Ladder, Log GDP per Capita, and Social Support).We then created the **WSS Plot function** and plot the WSS Plot or **Elbow Plot** to choose the optimal number of clusters from the dataset.
+
+<p style="color:navy;">**Example of numerical dataset:  **</p>
+```{r message = FALSE, warning = FALSE}
+
+# Unsupervised Learning hence converting our dataset to unlabelled dataset with dfcor1.
+
+head(dfcor1)
+```
+
+
+<p style="color:navy;">**WSS plot: **</p>
+```{r message = FALSE, warning = FALSE}
+# Limit numbers of variables to 4 variables which are healthy life expectancy, as well as variables that are highly correlated with it (Life Ladder, Log GDP per Capita, and Social Support).
+
+dfcor2 <- subset(dfcor1, select = c(1:4))
+
+# Create WSS Plot function
+
+wssplot <- function(data, nc=15, seed=1234)
+{
+  wss <- (nrow(data)-1)*sum(apply(data,2,var))
+  for (i in 2:nc){
+    set.seed(seed)
+    wss[i] <- sum(kmeans(data, centers=i)$withinss)}
+  plot(1:nc, wss, type="b", xlab="Number of Clusters",
+       ylab="Within groups sum of squares")
+}
+
+# WSS Plot or Elbow Plot to choose the maximum number of clusters
+
+wssplot(dfcor2)
+```
+
+As we could observe from the **WSS Plot** above, we could see an **elbow** at the third cluster. This means the optimal number of cluster for this dataset is **3**.
+
+We then visualised the identified clusters by plotting **Cluster Plot** and evaluated the clusters by **Cluster Centers**.
+
+<p style="color:navy;">**Cluster plot: **</p>
+
+```{r message = FALSE, warning = FALSE}
+# K-Means Cluster
+
+KM = kmeans(dfcor2, 3)
+
+
+# Evaluate the Cluster Analysis by Cluster Plot
+
+autoplot(KM, dfcor2, frame=TRUE)
+
+
+# Evaluate the Cluster Analysis by Cluster Centers
+
+KM$centers
+```
+
+From the **cluster center evaluation**, we could rank each group by the variables accordingly.
+
+| Groups | Ladder Score | Logged GDP per Capita | Social Support | Healthy Life Expectancy |
+|:------:|:------------:|:---------------------:|---------------:|:-----------------------:|
+|1|2nd|2nd|2nd|2nd|
+|2|1st|1st|1st|1st|
+|3|3rd|3rd|3rd|3rd|
+
+From the ranking above, it can be seen that variables that are highly correlated with **Healthy Life Expectancy** have a **direct correlation**.
+
+Based on **Logged GDP per Capita** which is not subjective as the other 3 variables, we created a new categorical data label, **Income Group**, containing **3** unique values based on the 3 specific groups identified from K-Means Clustering, namely:
+
+- G1: Middle Income Country
+- G2: High Income Country
+- G3: Low Income Country
+
+
+We created a new dataset, **df_kmean** with new column, **Income.group** by adding these newly created categorical data into our pre-processed dataset **df1**.
+
+<p style="color:navy;">**Example of clustered dataset: **</p>
+```{r message = FALSE, warning = FALSE}
+
+df_kmean <- cbind(df1, KM$cluster)
+colnames(df_kmean)[10] <- "Income.group"
+df_kmean$Income.group[df_kmean$Income.group=="1"] <- "Middle income"
+df_kmean$Income.group[df_kmean$Income.group=="2"] <- "High income"
+df_kmean$Income.group[df_kmean$Income.group=="3"] <- "Low income"
+head(df_kmean)
+```
+
+### **Naive Bayes** {.tabset}
+
+Since we had a new categorical data column **Income.group** in **df_kmean** as a result of performing **K-Means Clustering**, We tried to predict countries' income group based on the rest of the variables (except **healthy life expectancy**) using **Naive Bayes**.
+
+
+Firstly, we prepared the train and test data.
+
+<p style="color:navy;">**Proportion of training and testing data:  **</p>
+```{r message = FALSE, warning = FALSE}
+train_index <- createDataPartition(df_kmean$Healthy.life.expectancy, p=0.8, list=FALSE)
+train_data <- df_kmean[train_index, ]
+test_data <- df_kmean[-train_index, ]
+
+message(
+  "Initial: ", nrow(df_kmean), " rows.\n",
+  "Train: ", nrow(train_data), " rows (or ", round((nrow(train_data)/nrow(df_kmean))*100, 2), "% of ", nrow(df_kmean), " rows).\n",
+  "Test: ", nrow(test_data), " rows (or ", round((nrow(test_data)/nrow(df_kmean))*100, 2), "% of ", nrow(df_kmean), " rows)."
+)
+```
+
+<p style="color:navy;">**Result:  **</p>
+```{r message = FALSE, warning = FALSE}
+X_train <- train_data[, c(1:5,7:9)]
+Ycls_train <- train_data[, "Income.group"]
+
+X_test <- test_data[-train_index, c(1:5,7:9)]
+Ycls_test <- test_data[-train_index, "Income.group"]
+
+o2a2_model <- naiveBayes(Income.group~., data=subset(train_data,select=-Healthy.life.expectancy))
+
+o2a2_pred <- predict(o2a2_model, X_test)
+
+confusionMatrix(o2a2_pred, as.factor(Ycls_test))
+
+```
+We had achieved a performance of around **85% accuracy** as shown above.
+
+### **Rapid Miner** {.tabset}
+
+**RapidMiner Studio** is a powerful data mining tool that enables everything from data mining to model deployment, and model operations. In our project, we used RapidMiner to compare the different output values produced using the same machine learning models. The same data set was loaded into the system.
+
+The functions of the operators in RapidMiner are as below:
+
+<u>Retrieve data</u>
+
+The Retrieve Operator loads a RapidMiner object into the process. This object is often an example set but it can also be a collection or a model. Retrieving data this way also provides the meta data of the RapidMiner Object.
+
+<u>Select attribute</u>
+
+This operator selects a subset of attributes of an example set and removes the other attributes.
+
+<u>Set role</u>
+
+This operator is used to change the role of one or more attributes.
+
+<u>Cross Validation</u>
+
+This operator performs a cross validation to estimate the statistical performance of a learning model.
+
+<u>Split data</u>
+
+This operator produces the desired number of subsets of the given example set. The example set is partitioned into subsets according to the specified relative sizes.
+
+<u>Apply model</u>
+
+This operator applies a model on an example set.
+
+<u>Performance</u>
+
+This operator is used for performance evaluation. It delivers a list of performance criteria values. These performance criteria are automatically determined in order to fit the learning task type.
+
+
+#### **Linear Regression** {.tabset}
+
+
+The first image displays the prediction of life expectancy using Linear Regression in RapidMinor Studio. The model's performance is represented by the RMSE value, as shown in the the following picture.  
+
+<p style="color:navy;">**Graph**</p>
+
+<img src="Images/Linear_graph.png" alt="Alt text" width="75%"/> 
+
+
+<p style="color:navy;">**Performance**</p>
+
+<img src="Images/Linear_RMSE.png" alt="Alt text" width="75%"/> 
+
+RMSE value of 3.264 is attained. 
+
+#### **Ridge Regression** {.tabset}
+
+The graph below shows the prediction of life expectancy using Ridge Regression in RapidMinor Studio. The model's performance is represented by the RMSE value, as shown in the picture below. 
+
+<p style="color:navy;">**Graph**</p>
+
+<img src="Images/Ridge_graph.png" alt="Alt text" width="75%"/> 
+
+
+<p style="color:navy;">**Performance**</p>
+
+<img src="Images/Ridge_RMSE.png" alt="Alt text" width="75%"/> 
+
+RMSE value of 6.214 is attained. 
+
+
+#### **K-means Cluster** {.tabset}
+
+
+<img src="Images/Kmeans_graph.png" alt="Alt text" width="75%"/> 
+
+
+#### **Naive Bayes** {.tabset}
+
+<p style="color:navy;">**Graph**</p>
+
+<img src="Images/Naive_graph.png" alt="Alt text" width="75%"/> 
+
+
+<p style="color:navy;">**Performance**</p>
+
+<img src="Images/Naive_accuracy.png" alt="Alt text" width="75%"/> 
+
+
+## **Discussion & Conclusion** {.tabset}
+
+<p style="color:navy;">**Regression**</p>
+
+
+- Regression analysis is a statistical method to model the relationship between a dependent (target) and independent (predictor) variables with one or more independent variables.
+ 
+- We used Linear regression and Ridge regression to perform prediction on life expectancy.
+
+- Our results: 
+
+| Regression Model | R-squared value | RMSE value | 
+|:------:|:------------:|:---------------------:|
+|Linear regression|0.7375|0.1307|
+|Ridge regression|0.7515|0.1179|
+
+- **Ridge regression technique** is used when data have multicollinearity (high correlation) between independent variables: Logged GDP per Capita, Social Support & Freedom to Make Life Choices. By adding a degree of bias to the regression estimates, ridge regression reduces the standard errors. Hence, this models performs better for our dataset as it gives *higher R-squared value and lower RMSE value*. 
+
+
+<p style="color:navy;">**Clustering**</p>
+
+
+- For clustering, we used the K-means algorithm which is an unsupervised learning method because it provides really good accuracy in the clustering algorithm; we have created **3 clusters** by focusing on the variables ladder score, logged GDP per Capita, social support and healthy life expectancy.
+
+- From the ranking, these variables are highly correlated with healthy life expectancy (direct correlation). 
+ 
+ 
+<p style="color:navy;">**Classification**</p>
+
+
+- For classification, we used Naive Bayes model to predict countries' income group based on all independent variables.
+
+- We achieved a performance of around **85% accuracy**.
+
+<h3 style="color:navy;">**Conclusion**</h3>
+
+From the EDA and modelling results, we can conclude that nations with **higher income level** *(Variables: Logged GDP per Capita)* are more happier because they have better financial ability to **make decisions** on life choices *(Variables: Freedom to Make Life Choices)*. Human rights ensure basic human needs are met including treatment and protection *(high correlation with our variables: Social support)*, and is interdependent to our mental and social well-being. **Strong and positive mental health can preserve a person’s ability to enjoy life.**  So, we have to balance our life between work and social, and always stay connected with family and friends in order to live a happier life.
